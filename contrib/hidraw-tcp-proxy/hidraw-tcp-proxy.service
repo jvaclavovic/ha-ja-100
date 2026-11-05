@@ -1,0 +1,13 @@
+[Unit]
+Description=Jablotron JA-100 hidraw to TCP proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/hidraw-tcp-proxy/hidraw_tcp_proxy.py --port 8765
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
