@@ -110,6 +110,10 @@ class Proxy:
 			pass
 		self._dev_fd = None
 		self._dev_path = None
+		# Disconnect everyone so clients see EOF, exactly as they would on a
+		# vanished hidraw device, and mark their entities unavailable.
+		for client in list(self._clients.values()):
+			self._drop_client(client, "device lost")
 
 	def _on_device_readable(self, _mask: int) -> None:
 		assert self._dev_fd is not None
@@ -149,9 +153,15 @@ class Proxy:
 			sock, addr = self._listener.accept()
 		except OSError:
 			return
+		peer = "{}:{}".format(*addr[:2])
+		if self._dev_fd is None:
+			# No device: refuse so the client fails fast instead of waiting on
+			# a silent connection.
+			LOGGER.warning("Refusing %s: device not open", peer)
+			sock.close()
+			return
 		sock.setblocking(False)
 		sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-		peer = "{}:{}".format(*addr[:2])
 		client = Client(sock, peer)
 		self._clients[sock.fileno()] = client
 		self._sel.register(sock, selectors.EVENT_READ, lambda m, c=client: self._on_client_readable(c))
