@@ -165,7 +165,7 @@ class Proxy:
 		client = Client(sock, peer)
 		self._clients[sock.fileno()] = client
 		self._sel.register(sock, selectors.EVENT_READ, lambda m, c=client: self._on_client_readable(c))
-		LOGGER.info("Client connected: %s (%d total)", peer, len(self._clients))
+		LOGGER.debug("Client connected: %s (%d total)", peer, len(self._clients))
 
 	def _drop_client(self, client: Client, reason: str) -> None:
 		fd = client.sock.fileno()
@@ -179,7 +179,8 @@ class Proxy:
 			client.sock.close()
 		except OSError:
 			pass
-		LOGGER.info("Client disconnected: %s (%s, %d left)", client.peer, reason, len(self._clients))
+		level = logging.INFO if reason == "device lost" else logging.DEBUG
+		LOGGER.log(level, "Client disconnected: %s (%s, %d left)", client.peer, reason, len(self._clients))
 
 	def _on_client_readable(self, client: Client) -> None:
 		try:
