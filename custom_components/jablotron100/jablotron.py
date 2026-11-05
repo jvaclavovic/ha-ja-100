@@ -329,7 +329,10 @@ class Jablotron:
 			# when the configured device node is missing — custom paths (e.g.
 			# Docker bind-mounts like /dev/jablotron or udev symlinks) cannot be
 			# verified via sysfs and must be trusted as long as they exist.
-			if not await self._hass.async_add_executor_job(os.path.exists, self._serial_port):
+			if (
+				not is_tcp_serial_port(self._serial_port)
+				and not await self._hass.async_add_executor_job(os.path.exists, self._serial_port)
+			):
 				LOGGER.warning(
 					"Configured serial port %s does not exist, attempting autodetection",
 					self._serial_port,
