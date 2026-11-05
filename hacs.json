@@ -1,5 +1,5 @@
 {
-	"name": "Jablotron 100",
+	"name": "Jablotron 100 (TCP transport)",
 	"content_in_root": false,
 	"domains": ["alarm_control_panel", "binary_sensor", "event", "sensor", "switch"],
 	"country": ["CS", "DA", "DE", "EN", "IT", "NB", "NL", "SK"],

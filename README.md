@@ -1,3 +1,8 @@
+> **Fork note:** this fork adds a `tcp://host:port` serial-port transport so the
+> JA-100 USB cable can live on another machine (see
+> [`contrib/hidraw-tcp-proxy`](contrib/hidraw-tcp-proxy)). Everything else
+> follows [kukulich/home-assistant-jablotron100](https://github.com/kukulich/home-assistant-jablotron100).
+
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://github.com/hacs/default)
 
 # Jablotron 100+
