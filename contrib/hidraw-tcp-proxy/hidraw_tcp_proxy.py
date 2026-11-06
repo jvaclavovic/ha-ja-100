@@ -12,10 +12,17 @@ Protocol (both directions): frames of ``!H`` big-endian length + payload.
 Single-threaded ``selectors`` loop, stdlib only.  The device is re-opened
 automatically when it disappears (USB re-plug) and the clients stay connected
 meanwhile.
+
+Access control: ``--allow`` limits which client addresses may connect
+(IPv4/IPv6 addresses or CIDR networks, repeatable or comma-separated).  Other
+clients are closed right after ``accept()`` and logged (rate-limited per
+address).  Without ``--allow`` every client is accepted, as before; the proxy
+logs a warning at startup.  This is a second layer -- keep a host firewall too.
 """
 
 import argparse
 import errno
+import ipaddress
 import logging
 import os
 import selectors
@@ -31,6 +38,41 @@ FRAME_HEADER = struct.Struct("!H")
 REPORT_SIZE = 64
 HIDRAW_SYSFS = "/sys/class/hidraw"
 MAX_FRAME = 4096
+REFUSED_LOG_INTERVAL = 60.0
+REFUSED_LOG_MAX_PEERS = 1024
+
+Network = ipaddress.IPv4Network | ipaddress.IPv6Network
+
+
+def parse_allow(values: list[str] | None) -> list[Network] | None:
+	"""``["10.0.0.6", "10.0.0.10/31,10.0.0.21"]`` -> networks; None = allow all."""
+	if not values:
+		return None
+	networks: list[Network] = []
+	for value in values:
+		for item in value.split(","):
+			item = item.strip()
+			if not item:
+				continue
+			try:
+				networks.append(ipaddress.ip_network(item, strict=False))
+			except ValueError as ex:
+				raise argparse.ArgumentTypeError("invalid --allow entry {!r}: {}".format(item, ex)) from ex
+	if not networks:
+		raise argparse.ArgumentTypeError("--allow given but empty")
+	return networks
+
+
+def is_allowed(address: str, allow: list[Network] | None) -> bool:
+	if allow is None:
+		return True
+	try:
+		ip = ipaddress.ip_address(address)
+	except ValueError:
+		return False
+	if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+		ip = ip.ipv4_mapped
+	return any(ip in net for net in allow if net.version == ip.version)
 
 
 def find_hidraw_device(vid: int, pid: int) -> str | None:
@@ -58,7 +100,15 @@ class Client:
 
 
 class Proxy:
-	def __init__(self, device: str | None, vid: int, pid: int, bind: str, port: int) -> None:
+	def __init__(
+		self,
+		device: str | None,
+		vid: int,
+		pid: int,
+		bind: str,
+		port: int,
+		allow: list[Network] | None = None,
+	) -> None:
 		self._device_arg = device
 		self._vid = vid
 		self._pid = pid
@@ -69,6 +119,8 @@ class Proxy:
 		self._dev_fd: int | None = None
 		self._dev_path: str | None = None
 		self._next_open_attempt = 0.0
+		self._allow = allow
+		self._refused_logged: dict[str, float] = {}
 
 	# --- device -----------------------------------------------------------
 
@@ -154,6 +206,10 @@ class Proxy:
 		except OSError:
 			return
 		peer = "{}:{}".format(*addr[:2])
+		if not is_allowed(addr[0], self._allow):
+			self._log_refused(addr[0], peer)
+			sock.close()
+			return
 		if self._dev_fd is None:
 			# No device: refuse so the client fails fast instead of waiting on
 			# a silent connection.
@@ -166,6 +222,16 @@ class Proxy:
 		self._clients[sock.fileno()] = client
 		self._sel.register(sock, selectors.EVENT_READ, lambda m, c=client: self._on_client_readable(c))
 		LOGGER.debug("Client connected: %s (%d total)", peer, len(self._clients))
+
+	def _log_refused(self, address: str, peer: str) -> None:
+		now = time.monotonic()
+		last = self._refused_logged.get(address)
+		if last is not None and now - last < REFUSED_LOG_INTERVAL:
+			return
+		if len(self._refused_logged) >= REFUSED_LOG_MAX_PEERS:
+			self._refused_logged.clear()
+		self._refused_logged[address] = now
+		LOGGER.warning("Refusing %s: not in --allow (further refusals from this address muted for %ds)", peer, REFUSED_LOG_INTERVAL)
 
 	def _drop_client(self, client: Client, reason: str) -> None:
 		fd = client.sock.fileno()
@@ -215,6 +281,10 @@ class Proxy:
 		self._listener.setblocking(False)
 		self._sel.register(self._listener, selectors.EVENT_READ, self._on_accept)
 		LOGGER.info("Listening on %s:%d", self._bind, self._port)
+		if self._allow is None:
+			LOGGER.warning("No --allow given: accepting clients from any address")
+		else:
+			LOGGER.info("Allowed clients: %s", ", ".join(str(n) for n in self._allow))
 
 		while True:
 			if self._dev_fd is None:
@@ -230,15 +300,25 @@ def main() -> int:
 	parser.add_argument("--pid", default="0008", help="USB product id, hex (default: 0008)")
 	parser.add_argument("--bind", default="0.0.0.0")
 	parser.add_argument("--port", type=int, default=8765)
+	parser.add_argument(
+		"--allow",
+		action="append",
+		metavar="IP[/PREFIX][,...]",
+		help="allowed client address or network; repeatable or comma-separated (default: any)",
+	)
 	parser.add_argument("--debug", action="store_true")
 	args = parser.parse_args()
+	try:
+		allow = parse_allow(args.allow)
+	except argparse.ArgumentTypeError as ex:
+		parser.error(str(ex))
 
 	logging.basicConfig(
 		level=logging.DEBUG if args.debug else logging.INFO,
 		format="%(asctime)s %(levelname)s %(message)s",
 		stream=sys.stdout,
 	)
-	Proxy(args.device, int(args.vid, 16), int(args.pid, 16), args.bind, args.port).run()
+	Proxy(args.device, int(args.vid, 16), int(args.pid, 16), args.bind, args.port, allow).run()
 	return 0
 
 
