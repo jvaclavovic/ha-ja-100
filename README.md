@@ -2,6 +2,18 @@
 > JA-100 USB cable can live on another machine (see
 > [`contrib/hidraw-tcp-proxy`](contrib/hidraw-tcp-proxy)). Everything else
 > follows [kukulich/home-assistant-jablotron100](https://github.com/kukulich/home-assistant-jablotron100).
+>
+> **Why:** Home Assistant running as a VM in a Proxmox VE cluster can only be
+> made highly available (live migration, automatic restart on another node)
+> when the VM has **no USB device attached**. A USB passthrough pins the VM to
+> the node the cable is plugged into: Proxmox refuses to live-migrate it, and
+> detaching the USB device at runtime does not help either, because the USB
+> controller stays in the VM and the migration still fails. The upstream
+> integration can only open a local `/dev/hidraw*` device, so the JA-100 cable
+> had to be inside the VM. With this fork the cable is plugged into any small
+> Linux box (a Raspberry Pi, for example), `hidraw-tcp-proxy` exposes it over
+> TCP, and the HA VM talks to it over the network — the VM stays USB-free and
+> can move freely between nodes.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://github.com/hacs/default)
 

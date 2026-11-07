@@ -4,6 +4,11 @@ Exposes the Jablotron JA-100 USB cable (HID device `16d6:0008`) over TCP so
 that the `jablotron100` integration can run on a host that does not have the
 cable attached (for example a Home Assistant VM that must stay live-migratable).
 
+Typical reason: Proxmox VE cannot live-migrate a VM with a USB device passed
+through, so a Home Assistant VM with the JA-100 cable cannot be part of a
+Proxmox HA setup. Moving the cable to a separate always-on box (such as a
+Raspberry Pi) and reading it over TCP removes the USB dependency from the VM.
+
 Protocol: both directions use frames `!H` (2-byte big-endian length) + payload.
 Each HID input report (64 B) from the device is sent to every connected client
 as one frame; each frame from a client is written to the device as one report.
