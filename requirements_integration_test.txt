@@ -1,3 +1,4 @@
 -r requirements_test.txt
 homeassistant>=2026.10.0
-pytest-asyncio>=1.0.0,<2pytest-timeout>=2.3.0
+pytest-asyncio>=1.0.0,<2
+pytest-timeout>=2.3.0
