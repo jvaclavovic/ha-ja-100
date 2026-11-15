@@ -53,7 +53,7 @@ Tested with JA-100K, JA-101K, JA-101K-LAN, JA-103K, JA-103KRY, JA-106K-3G, JA-10
 - Power supply state and overall problem are reported as binary sensors.
 - BUS voltage and BUS devices current are reported per detected BUS.
 - Battery presence, battery level, standby and load voltages are reported when the central unit has a backup battery.
-- LAN connection state and (when available) the LAN IP address are reported for supported central units.
+- LAN connection state and (when available) the LAN IP address are reported for supported central units, with either DHCP or a static IP address.
 - GSM signal availability and signal strength are reported for supported central units.
 - A `wrong code` event entity records failed authorisation attempts; the same condition also fires the `jablotron100_wrong_code` event on the bus.
 
@@ -99,6 +99,22 @@ file and reconnect the USB cable so the system recreates the character device.
 Then start Home Assistant again. Do not remove a valid device node. The integration
 does not delete or recreate device paths automatically.
 
+
+#### USB cable on another machine (`tcp://`)
+
+If the USB cable cannot be connected to the Home Assistant host (for example a
+Home Assistant VM that has to stay live-migratable, which a USB passthrough
+prevents), connect it to another Linux machine such as a Raspberry Pi and run
+[`hidraw-tcp-proxy`](contrib/hidraw-tcp-proxy) there. Then set the serial port
+to `tcp://<host>:8765` (IPv6: `tcp://[<address>]:8765`). The proxy forwards the
+HID reports themselves, so it works with the USB HID cable, unlike serial
+proxies such as ser2net.
+
+The traffic between Home Assistant and the proxy is **not encrypted or
+authenticated**. Anyone who can reach the proxy port can read the alarm state
+and send commands to the control panel. Restrict it with the proxy's `--allow`
+option and a host firewall, or run it only over a VPN. See the
+[proxy README](contrib/hidraw-tcp-proxy/README.md).
 
 ### HACS
 

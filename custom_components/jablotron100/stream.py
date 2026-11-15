@@ -18,10 +18,23 @@ def is_tcp_serial_port(serial_port: str) -> bool:
 
 
 def parse_tcp_serial_port(serial_port: str) -> tuple[str, int]:
+	"""``tcp://host[:port]`` -> (host, port); IPv6 hosts as ``tcp://[::1]:8765``."""
 	address = serial_port[len(TCP_PREFIX):].strip("/")
-	host, sep, port = address.rpartition(":")
-	if not sep or not host:
-		return address, TCP_DEFAULT_PORT
+	if address.startswith("["):
+		host, sep, rest = address[1:].partition("]")
+		if not sep or not host or (rest and not rest.startswith(":")):
+			raise ValueError("Invalid TCP serial port: {}".format(serial_port))
+		port = rest[1:]
+	elif address.count(":") == 1:
+		host, port = address.split(":")
+	else:
+		host, port = address, ""
+	if not host:
+		raise ValueError("Invalid TCP serial port: {}".format(serial_port))
+	if not port:
+		return host, TCP_DEFAULT_PORT
+	if not port.isdigit() or not 0 < int(port) < 65536:
+		raise ValueError("Invalid TCP serial port: {}".format(serial_port))
 	return host, int(port)
 
 
@@ -123,8 +136,11 @@ class JablotronReadStream:
 		assert self._sock is not None
 		while not self._stopped():
 			frame = self._pop_frame()
-			if frame is not None:
+			if frame:
 				return frame
+			if frame is not None:
+				# Empty frame: skip it, b"" is reserved for "connection closed"
+				continue
 
 			readable, _, _ = select.select([self._sock], [], [], 0.2)
 			if self._stopped():
@@ -136,8 +152,9 @@ class JablotronReadStream:
 				data = self._sock.recv(4096)
 			except BlockingIOError:
 				continue
-			except (ConnectionError, TimeoutError):
-				# Behave like a closed hidraw stream so the caller reconnects
+			except OSError:
+				# Connection reset, host unreachable, ...: behave like a closed
+				# hidraw stream so the caller marks entities unavailable and reconnects
 				return b""
 			if not data:
 				return b""

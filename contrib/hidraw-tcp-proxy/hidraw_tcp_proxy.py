@@ -9,9 +9,13 @@ Protocol (both directions): frames of ``!H`` big-endian length + payload.
 * Every frame received from a client is written to the device as one
   ``write()`` (one HID output report).
 
-Single-threaded ``selectors`` loop, stdlib only.  The device is re-opened
-automatically when it disappears (USB re-plug) and the clients stay connected
-meanwhile.
+Single-threaded ``selectors`` loop, stdlib only.  When the device disappears
+(USB re-plug) all clients are disconnected, so they see EOF exactly as on a
+vanished hidraw device; new connections are refused until the device is
+re-opened (retried every 2 s).
+
+The traffic is NOT encrypted or authenticated: anyone who can reach the port
+can read the alarm state and send commands to the control panel.
 
 Access control: ``--allow`` limits which client addresses may connect
 (IPv4/IPv6 addresses or CIDR networks, repeatable or comma-separated).  Other
