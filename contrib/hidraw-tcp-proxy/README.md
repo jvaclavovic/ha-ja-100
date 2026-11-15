@@ -13,7 +13,7 @@ Protocol: both directions use frames `!H` (2-byte big-endian length) + payload.
 Each HID input report (64 B) from the device is sent to every connected client
 as one frame; each frame from a client is written to the device as one report.
 
-## Install (Debian / Raspberry Pi OS)
+## Install (Debian / Raspberry Pi OS, Python 3.10+, stdlib only)
 
 ```sh
 sudo mkdir -p /opt/hidraw-tcp-proxy
@@ -26,10 +26,18 @@ sudo systemctl enable --now hidraw-tcp-proxy
 The device must not be bound to `usbip-host` on the same machine (unbind it or
 disable `usbipd` first), otherwise `/dev/hidrawN` will not exist.
 
+## Security
+
+The connection is **plain TCP: not encrypted and not authenticated**. Anyone
+who can reach the port can read the alarm state and send commands to the
+control panel, and anyone on the network path can watch or alter the traffic.
+Never expose the port to the internet. Keep the proxy and Home Assistant on a
+trusted network segment, or connect them over a VPN (e.g. WireGuard), and
+restrict access as below.
+
 ## Access control
 
-Anyone who can reach the port can read the alarm state and send commands to the
-control panel. Limit it in two layers:
+Limit who can connect in two layers:
 
 1. **`--allow`** in the proxy: only listed addresses or networks may connect
    (repeatable or comma-separated, IPv4/IPv6, CIDR). Other clients are closed
@@ -57,4 +65,19 @@ control panel. Limit it in two layers:
 
 ## Home Assistant side
 
-In the Jablotron 100 integration set the serial port to `tcp://<host>:8765`.
+In the Jablotron 100 integration set the serial port to `tcp://<host>:8765`
+(IPv6: `tcp://[<address>]:8765`; the port defaults to 8765).
+
+When the cable is unplugged or the proxy host is unreachable, the proxy closes
+all connections and refuses new ones until the device is back. The integration
+marks its entities unavailable and keeps reconnecting, so the proxy port can
+also be watched with a plain TCP monitor.
+
+The integration opens a short-lived connection for each write, so frequent
+connects and disconnects in the proxy debug log are expected.
+
+## Typical setup
+
+Tested with a JA-101K-LAN, the USB cable on a Raspberry Pi (Raspberry Pi OS,
+Python 3.10+) and Home Assistant OS in a Proxmox VE VM, including live migration of
+the VM while connected.
